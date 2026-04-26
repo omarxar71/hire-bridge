@@ -1,8 +1,12 @@
+import { Interview } from "../../database/interview/interview.model.js"
 import { Job } from "../../database/job/job.model.js"
 import User from "../../database/User/user.model.js"
 import { compareHash, hashing } from "../../utils/hashing/hashing.js"
 import { generateToken } from "../../utils/token/token.js"
-
+import axios from 'axios';
+import { CanvasFactory } from 'pdf-parse/worker'; 
+import { PDFParse } from 'pdf-parse';
+import { GoogleGenerativeAI } from '@google/generative-ai';
 
 
 export const seedSuperAdmin = async () => {
@@ -19,38 +23,38 @@ export const seedSuperAdmin = async () => {
 
 
         })
-       console.log("super admin created successfully")
+        console.log("super admin created successfully")
     } catch (error) {
         console.log(error.message)
     }
 }
 
 
-export const logInSystem = async(req , res , next)=>{
-    const {email , password}=req.body
-    const user = await User.findOne({email})
-    if(!user)
-        return res.status(404).json({message:"user not found"})
-    if(user.role !== "systemAdmin" && user.role !== "superAdmin")
-        return res.status(400).json({message : "you are not authorized to call this api"})
-    const doesPasswordMatches = compareHash({plainText:password ,hashedText:user.password})
-    if(!doesPasswordMatches)
-        return res.status(400).json({message : "invalid password"})
-    const token = generateToken({plainText:{id:user._id , role:user.role , email:user.email}})
+export const logInSystem = async (req, res, next) => {
+    const { email, password } = req.body
+    const user = await User.findOne({ email })
+    if (!user)
+        return res.status(404).json({ message: "user not found" })
+    if (user.role !== "systemAdmin" && user.role !== "superAdmin")
+        return res.status(400).json({ message: "you are not authorized to call this api" })
+    const doesPasswordMatches = compareHash({ plainText: password, hashedText: user.password })
+    if (!doesPasswordMatches)
+        return res.status(400).json({ message: "invalid password" })
+    const token = generateToken({ plainText: { id: user._id, role: user.role, email: user.email } })
 
-    return res.status(200).json({message : "login successfully" , token})
-    
+    return res.status(200).json({ message: "login successfully", token })
+
 }
 
 
 export const registerSystemAdmins = async (req, res, next) => {
     try {
-        const {email , password , firstName , lastName , phoneNumber} = req.body
-        const user = await User.findOne({email})
-        if(!req.user.role ==="superAdmin")
-            return res.status(400).json({message : "you are not authorized to call this api"})
-        if(user){
-            return res.status(400).json({message:"user already exists"})
+        const { email, password, firstName, lastName, phoneNumber } = req.body
+        const user = await User.findOne({ email })
+        if (!req.user.role === "superAdmin")
+            return res.status(400).json({ message: "you are not authorized to call this api" })
+        if (user) {
+            return res.status(400).json({ message: "user already exists" })
         }
         const hashedPassword = hashing({ plainText: password })
         const newUser = await User.create({
@@ -62,9 +66,9 @@ export const registerSystemAdmins = async (req, res, next) => {
             lastName,
             phoneNumber,
         })
-        return res.status(201).json({message:"system admin created successfully" , user:newUser})
+        return res.status(201).json({ message: "system admin created successfully", user: newUser })
     } catch (error) {
-        return res.status(500).json({message:"internal server error" , error : error.message})
+        return res.status(500).json({ message: "internal server error", error: error.message })
     }
 }
 
@@ -88,13 +92,13 @@ export const getMatchingCandidates = async (req, res, next) => {
             "candidateProfile.workType": job.workType,
             "candidateProfile.expectedSalary": { $lte: job.budget }
         })
-        if(matchingCandidates.length === 0)
-            return res.status(200).json({message : "no matching candidates found"})
+        if (matchingCandidates.length === 0)
+            return res.status(200).json({ message: "no matching candidates found" })
 
-        return res.status(200).json({ 
-            message: "matching candidates found", 
+        return res.status(200).json({
+            message: "matching candidates found",
             total: matchingCandidates.length,
-            candidates: matchingCandidates 
+            candidates: matchingCandidates
         })
 
     } catch (error) {
@@ -146,9 +150,9 @@ export const sendCandidateToJob = async (req, res, next) => {
 
         await job.save()
 
-        return res.status(200).json({ 
-            message: "candidate sent to job successfully", 
-            sentCandidates: job.shortlistedCandidates 
+        return res.status(200).json({
+            message: "candidate sent to job successfully",
+            sentCandidates: job.shortlistedCandidates
         })
 
     } catch (error) {
@@ -200,10 +204,122 @@ export const deleteCandidateFromShortlist = async (req, res, next) => {
 }
 
 
-export const getInterviews = async(req ,res , next)=>{
+export const getInterviews = async (req, res, next) => {
     try {
-     
+        const adminId = req.user.id
+        const user = await User.findById(adminId)
+        if (!user)
+            return res.status(404).json({ message: "user not found" })
+        if (user.role !== "systemAdmin" && user.role !== "superAdmin")
+            return res.status(403).json({ message: "you are not authorized to get interviews" })
+        const interviews = await Interview.find().populate("candidate")
+        if (!interviews)
+            return res.status(404).json({ message: "interviews not found" })
+        return res.status(200).json({ message: "interviews found", interviews })
     } catch (error) {
-        return res.status(500).json({message : "internal server error" , error : error.message})
+        return res.status(500).json({ message: "internal server error", error: error.message })
     }
 }
+
+
+export const getAllJobs = async (req, res, next) => {
+    try {
+        const adminId = req.user.id
+        const user = await User.findById(adminId)
+        if (!user)
+            return res.status(404).json({ message: "user not found!" })
+        if (user.role !== "systemAdmin" && user.role !== "superAdmin")
+            return res.status(403).json({ message: "you are not authorized to get jobs" })
+        const jobs = await Job.find()
+            .populate("company")
+            .populate("employerId")
+            .populate("shortlistedCandidates.candidate")
+        if (!jobs)
+            return res.status(404).json({ message: "jobs not found" })
+        return res.status(200).json({ message: "jobs found", total: jobs.length, jobs })
+    } catch (error) {
+        return res.status(500).json({ message: "internal server error", error: error.message })
+    }
+}
+
+
+
+
+
+
+
+export const predictProbationSuccess = async (req, res, next) => {
+    try {
+        // 1. Initialize Gemini inside the function
+        const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
+        
+        const { candidateId } = req.params;
+        const { jobTitle, jobDescription } = req.body;
+
+        if (!jobTitle || !jobDescription) {
+            return res.status(400).json({ message: "Please provide the jobTitle and jobDescription in the request body." });
+        }
+
+        // 2. Find the candidate
+        const candidate = await User.findById(candidateId);
+        if (!candidate || !candidate.candidateProfile.cvUrl) {
+            return res.status(404).json({ message: "Candidate not found or has no CV uploaded." });
+        }
+
+        // 3. Fetch and parse the CV from Cloudinary (exactly like the fraud check)
+        const response = await axios.get(candidate.candidateProfile.cvUrl, {
+            responseType: 'arraybuffer'
+        });
+
+        const parser = new PDFParse({ 
+            data: Buffer.from(response.data), 
+            CanvasFactory 
+        });
+        const pdfData = await parser.getText();
+        const cvText = pdfData.text;
+
+        // 4. The Predictive AI Prompt
+        const prompt = `
+            You are an expert HR Data Scientist and Technical Recruiter.
+            Evaluate the following candidate's CV against the provided Job Description to predict their likelihood of successfully passing a 3-month probation period without quitting or being fired.
+            
+            Look for: 
+            - Tenure at previous jobs (are they a job-hopper?)
+            - Relevance of their tech stack to the job description
+            - Seniority level matching (e.g., a junior applying for a lead role is high risk)
+
+            Return ONLY a valid JSON object with this exact structure, no markdown formatting, no extra text:
+            {
+              "successProbability": <Number 0-100>,
+              "predictionStatus": <String: "High Risk", "Moderate Risk", or "Strong Fit">,
+              "strengths": [<Array of Strings: Specific reasons they will succeed>],
+              "riskFactors": [<Array of Strings: Specific reasons they might fail or quit>]
+            }
+
+            Job Title: ${jobTitle}
+            Job Description: ${jobDescription}
+
+            Candidate CV:
+            ${cvText}
+        `;
+
+        // 5. Run the Gemini analysis
+        const model = genAI.getGenerativeModel({ model: "gemini-2.5-flash" });
+        const aiResponse = await model.generateContent(prompt);
+        const responseText = aiResponse.response.text();
+
+        // 6. Clean and parse the JSON response
+        const cleanJson = responseText.replace(/```json/g, '').replace(/```/g, '').trim();
+        const predictionAnalysis = JSON.parse(cleanJson);
+
+        // 7. Return the prediction to the Employer
+        return res.status(200).json({
+            message: "Probation prediction complete",
+            candidateName: candidate.firstName ? `${candidate.firstName} ${candidate.lastName}` : candidate.email,
+            evaluation: predictionAnalysis
+        });
+
+    } catch (error) {
+        return res.status(500).json({ message: "Internal server error", error: error.message });
+    }
+};
