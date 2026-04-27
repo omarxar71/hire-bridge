@@ -14,7 +14,7 @@ const userSchema = new mongoose.Schema({
 
  candidateProfile: {
   cvUrl: { type: String },
-  specialization: { type: String, enum: ['Sales', 'Engineering', 'Marketing', 'HR', 'Accounting', 'IT', 'Customer Service'] },
+  specialization: { type: String},
   experienceLevel: { type: String, enum: ['Junior', 'Mid', 'Senior', 'Lead'] },
   expectedSalary: {
     min: { type: Number },
