@@ -80,41 +80,41 @@ export const deleteJob = async (req, res, next) => {
 }
 
 //get all the job posted by all the companies 
-export const getAllJobs = async(req ,res , next)=>{
-   try {
-    const allJobs = await Job.find()
-    return res.status(200).json({message : "all jobs " , jobs:allJobs})
-   } catch (error) {
-    return res.status(500).json({message : "server error" , error : error.message})
-   }
+export const getAllJobs = async (req, res, next) => {
+    try {
+        const allJobs = await Job.find()
+        return res.status(200).json({ message: "all jobs ", jobs: allJobs })
+    } catch (error) {
+        return res.status(500).json({ message: "server error", error: error.message })
+    }
 }
 
 //get the shortlisted of the job
-export const shortListedCandidatesofSpecifcJobForCompany = async(req , res , next)=>{
-   try {
-    const {jobId} = req.params
-    const EmployerId = req.user.id
-    const job = await Job.findById(jobId).populate("shortlistedCandidates")
-    if (!job)
-        return res.status(435).json({message : "job not found"})
-    const companyId = job.company
-    const findCompany = await Company.findById(companyId)
-    const searchEmployee = findCompany.employees.find((emp)=>{
-        if(emp.user.toJSON() == req.user.id.toJSON() && emp.status == "approved"){
-            return emp
-        }
+export const shortListedCandidatesofSpecifcJobForCompany = async (req, res, next) => {
+    try {
+        const { jobId } = req.params
+        const EmployerId = req.user.id
+        const job = await Job.findById(jobId).populate("shortlistedCandidates.candidate")
+        if (!job)
+            return res.status(404).json({ message: "job not found" })
+        const companyId = job.company
+        const findCompany = await Company.findById(companyId)
+        const searchEmployee = findCompany.employees.find((emp) => {
+            if (emp.user.toJSON() == req.user.id.toJSON() && emp.status == "approved") {
+                return emp
+            }
 
-    })
-    if(searchEmployee || findCompany.admin.adminEmail === req.user.email || req.user.role === "systemAdmin")
-        return res.status(200).json({message : "all candidates for this job" , candidatesOfThisJob:job.shortlistedCandidates})
+        })
+        if (searchEmployee || findCompany.admin.adminEmail === req.user.email || req.user.role === "systemAdmin")
+            return res.status(200).json({ message: "all candidates for this job", candidatesOfThisJob: job.shortlistedCandidates })
 
-    return res.status(403).json({message : "you are not authorized to see the jobs of this company"})
-   
-    
-   } catch (error) {
-    return res.status(500).json({message : "server error" , error : error.message})
-    
-   }
+        return res.status(403).json({ message: "you are not authorized to see the jobs of this company" })
+
+
+    } catch (error) {
+        return res.status(500).json({ message: "server error", error: error.message })
+
+    }
 }
 //when open all candidates for the job the employer can accept or reject a candidate
 //  so that the accepted candidates will go to the hiring page so that the employer schedule an interview with them
@@ -154,6 +154,9 @@ export const acceptCandidate = async (req, res, next) => {
         job.rejectedCandidates = job.rejectedCandidates.filter(item =>
             !item.candidate.equals(candidateId)
         )
+        job.shortlistedCandidates = job.shortlistedCandidates.filter(item =>
+            !item.candidate.equals(candidateId)
+        )
 
         await job.save()
         return res.status(200).json({ message: "candidate accepted successfully", job })
@@ -162,27 +165,30 @@ export const acceptCandidate = async (req, res, next) => {
         return res.status(500).json({ message: "Internal server error", error: error.message })
     }
 }
-export const rejectCandidate=async(req , res, next)=>{
+export const rejectCandidate = async (req, res, next) => {
     try {
-        const {jobId , candidateId}=req.params
+        const { jobId, candidateId } = req.params
         const job = await Job.findById(jobId)
         const company = await Company.findById(job.company)
-        if(!job)
-            return res.status(404).json({message : "job not found"})
-        const isShortlisted = job.shortlistedCandidates.find(item=>item.candidate === candidateId)
-        if(!isShortlisted)
-            return res.status(400).json({message : "candidate is not shortlisted for this job"})
+        if (!job)
+            return res.status(404).json({ message: "job not found" })
+        const isShortlisted = job.shortlistedCandidates.find(item => item.candidate === candidateId)
+        if (!isShortlisted)
+            return res.status(400).json({ message: "candidate is not shortlisted for this job" })
         const isAdmin = company.admin.adminEmail === req.user.email
         const isSystemAdmin = req.user.role === "systemAdmin"
-        const isEmployer = company.employees.find(emp=>emp.user.equals(req.user.id) && emp.status === "approved")
-        if(!isAdmin && !isEmployer && !isSystemAdmin)
-            return res.status(403).json({message : "you are not authorized to reject a candidate"})
-        job.rejectedCandidates.push({candidate:candidateId})
+        const isEmployer = company.employees.find(emp => emp.user.equals(req.user.id) && emp.status === "approved")
+        if (!isAdmin && !isEmployer && !isSystemAdmin)
+            return res.status(403).json({ message: "you are not authorized to reject a candidate" })
+        job.rejectedCandidates.push({ candidate: candidateId })
+        job.shortlistedCandidates = job.shortlistedCandidates.filter(item =>
+            !item.candidate.equals(candidateId)
+        )
         await job.save()
-        return res.status(200).json({message : "candidate rejected successfully" , job})
+        return res.status(200).json({ message: "candidate rejected successfully", job })
     } catch (error) {
-     return res.status(500).json({message : "server error" , error : error.message})
-        
+        return res.status(500).json({ message: "server error", error: error.message })
+
     }
 }
 
